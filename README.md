@@ -45,6 +45,7 @@ A Streamlit app that generates complete, self-contained web applications using H
 
 ## Future Plans
 - Add example templates gallery
-- Support for Progressive Web Apps (PWA)
+- Adding backend and db support
+- Adding support for enhancing the web app dynamically with succesive user prompts
 - Export functionality for downloading apps
 - More interactive preview features
