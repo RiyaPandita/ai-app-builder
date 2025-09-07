@@ -26,7 +26,7 @@ Return only the HTML code (with embedded CSS and JavaScript) without any explana
 
 def setup_gemini(api_key):
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel('gemini-2.5-flash')
+    return genai.GenerativeModel('gemini-2.5-pro')
 
 def find_free_port(start_port=5000, max_tries=100):
     """Find a free port starting from start_port."""
@@ -41,8 +41,9 @@ def find_free_port(start_port=5000, max_tries=100):
     raise RuntimeError("Could not find a free port")
 
 def save_and_run_app(code):
-    # Kill any existing Python HTTP servers
-    subprocess.run(["pkill", "-f", "python -m http.server"], stderr=subprocess.DEVNULL)
+    # Kill any existing Python HTTP servers (skip on Windows)
+    if os.name != "nt":
+        subprocess.run(["pkill", "-f", "python -m http.server"], stderr=subprocess.DEVNULL)
     
     # Create a temporary directory
     temp_dir = tempfile.mkdtemp()
@@ -58,8 +59,8 @@ def save_and_run_app(code):
         code = code[:-3].strip()
     
     # Save the generated code
-    with open(app_path, "w") as f:
-        f.write(code)
+    with open(app_path, "w", encoding="utf-8") as f:
+      f.write(code)
     
     # Find a free port and start the server
     port = find_free_port()
@@ -116,7 +117,7 @@ with col1:
                         with col2:
                             st.header("Live Preview")
                             try:
-                                with st.spinner("Starting the Flask server..."):
+                                with st.spinner("Starting the server..."):
                                     process, url = save_and_run_app(response.text)
                                     
                                 # Check if the process is still running
