@@ -57,9 +57,10 @@ def wait_for_server(url, timeout=10):
 
 def save_and_run_app(code):
     try:
-        # Kill any existing Python HTTP servers
-        subprocess.run(["pkill", "-f", "python -m http.server"], stderr=subprocess.DEVNULL)
-        time.sleep(1)  # Wait for ports to be freed
+        # Kill any existing Python HTTP servers (skip on Windows)
+        if os.name != "nt":
+            subprocess.run(["pkill", "-f", "python -m http.server"], stderr=subprocess.DEVNULL)
+            time.sleep(1)  # Wait for ports to be freed
         
         # Create a temporary directory
         temp_dir = tempfile.mkdtemp()
@@ -74,14 +75,15 @@ def save_and_run_app(code):
         if code.endswith("```"):
             code = code[:-3].strip()
         
-        # Save the generated code
-        with open(app_path, "w") as f:
+        # Save the generated code with UTF-8 encoding
+        with open(app_path, "w", encoding="utf-8") as f:
             f.write(code)
         
         # Find a free port and start the server
         port = find_free_port()
+        python_cmd = "python" if os.name == "nt" else "python3"
         process = subprocess.Popen(
-            ["python3", "-m", "http.server", str(port)],
+            [python_cmd, "-m", "http.server", str(port)],
             cwd=temp_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
