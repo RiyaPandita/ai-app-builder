@@ -28,7 +28,7 @@ def setup_gemini(api_key):
     genai.configure(api_key=api_key)
     return genai.GenerativeModel('gemini-2.5-flash')
 
-def find_free_port(start_port=5000, max_tries=100):
+def find_free_port(start_port=8000, max_tries=100):
     """Find a free port starting from start_port."""
     import socket
     for port in range(start_port, start_port + max_tries):
@@ -40,44 +40,67 @@ def find_free_port(start_port=5000, max_tries=100):
             continue
     raise RuntimeError("Could not find a free port")
 
+def wait_for_server(url, timeout=10):
+    """Wait for the server to be ready."""
+    import time
+    import requests
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                return True
+        except requests.exceptions.ConnectionError:
+            time.sleep(0.5)
+            continue
+    return False
+
 def save_and_run_app(code):
-    # Kill any existing Python HTTP servers
-    subprocess.run(["pkill", "-f", "python -m http.server"], stderr=subprocess.DEVNULL)
-    
-    # Create a temporary directory
-    temp_dir = tempfile.mkdtemp()
-    app_path = os.path.join(temp_dir, "index.html")
-    
-    # Clean up the code by removing markdown code fence if present
-    code = code.strip()
-    if code.startswith("```html"):
-        code = code[len("```html"):].strip()
-    if code.startswith("```"):
-        code = code[3:].strip()
-    if code.endswith("```"):
-        code = code[:-3].strip()
-    
-    # Save the generated code
-    with open(app_path, "w") as f:
-        f.write(code)
-    
-    # Find a free port and start the server
-    port = find_free_port()
-    process = subprocess.Popen(
-        ["python", "-m", "http.server", str(port)],
-        cwd=temp_dir,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-    
-    # Wait for server to start and verify it's running
-    time.sleep(1)
-    if process.poll() is not None:
-        # Server failed to start, get the error
-        _, stderr = process.communicate()
-        raise RuntimeError(f"Server failed to start: {stderr.decode()}")
-    
-    return process, f"http://localhost:{port}"
+    try:
+        # Kill any existing Python HTTP servers
+        subprocess.run(["pkill", "-f", "python -m http.server"], stderr=subprocess.DEVNULL)
+        time.sleep(1)  # Wait for ports to be freed
+        
+        # Create a temporary directory
+        temp_dir = tempfile.mkdtemp()
+        app_path = os.path.join(temp_dir, "index.html")
+        
+        # Clean up the code by removing markdown code fence if present
+        code = code.strip()
+        if code.startswith("```html"):
+            code = code[len("```html"):].strip()
+        if code.startswith("```"):
+            code = code[3:].strip()
+        if code.endswith("```"):
+            code = code[:-3].strip()
+        
+        # Save the generated code
+        with open(app_path, "w") as f:
+            f.write(code)
+        
+        # Find a free port and start the server
+        port = find_free_port()
+        process = subprocess.Popen(
+            ["python3", "-m", "http.server", str(port)],
+            cwd=temp_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        url = f"http://localhost:{port}"
+        
+        # Wait for server to be ready
+        if not wait_for_server(url):
+            _, stderr = process.communicate()
+            raise RuntimeError(f"Server failed to start: {stderr.decode() if stderr else 'Timeout waiting for server'}")
+        
+        return process, url
+        
+    except Exception as e:
+        # Clean up on error
+        if 'process' in locals():
+            process.kill()
+        raise RuntimeError(f"Failed to start preview server: {str(e)}")
 
 # Layout
 col1, col2 = st.columns(2)
@@ -116,28 +139,36 @@ with col1:
                         with col2:
                             st.header("Live Preview")
                             try:
-                                with st.spinner("Starting the Flask server..."):
+                                with st.spinner("Starting preview server..."):
                                     process, url = save_and_run_app(response.text)
+                                
+                                if process and process.poll() is None:
+                                    st.success("✅ App is running successfully!")
                                     
-                                # Check if the process is still running
-                                if process.poll() is None:
-                                    st.success(f"App is running at {url}")
-                                    st.info("⚠️ For the best experience, please open the app in a new tab to test all features properly.")
+                                    # Create two columns for the info and button
+                                    preview_col1, preview_col2 = st.columns([3, 1])
+                                    with preview_col1:
+                                        st.info("⚠️ For the best experience, please open the app in a new tab")
+                                    with preview_col2:
+                                        st.markdown(
+                                            f'<a href="{url}" target="_blank"><button style="width:100%;padding:8px;background-color:#4CAF50;color:white;border:none;border-radius:4px;cursor:pointer;">Open in New Tab</button></a>', 
+                                            unsafe_allow_html=True
+                                        )
+                                    
+                                    st.markdown("---")
+                                    
+                                    # Show preview
                                     st.markdown(
-                                        f'<iframe src="{url}" width="100%" height="600px" sandbox="allow-scripts allow-forms"></iframe>',
+                                        f'<iframe src="{url}" width="100%" height="600px" sandbox="allow-scripts allow-forms allow-popups" style="border:1px solid #ddd;border-radius:4px;"></iframe>',
                                         unsafe_allow_html=True
                                     )
-                                    st.markdown(f'[Open in new tab]({url})', unsafe_allow_html=True)
                                 else:
-                                    st.error("Failed to start the web server. Please try again.")
+                                    st.error("Failed to start preview server. Please try again.")
                             except Exception as e:
-                                st.error(f"Error running the app: {str(e)}")
+                                st.error(f"Error setting up preview: {str(e)}")
                     else:
                         st.error("No code was generated. Please try again.")
                         
             except Exception as e:
                 st.error(f"Error generating code: {str(e)}")
 
-with col2:
-    st.header("Preview")
-    st.info("Generate an app to see the preview here!")
